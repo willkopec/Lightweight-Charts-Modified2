@@ -1,5 +1,3 @@
-/// <reference types="_build-time-constants" />
-
 import { assert, ensureNotNull } from '../helpers/assertions';
 import { Delegate } from '../helpers/delegate';
 import { IDestroyable } from '../helpers/idestroyable';
@@ -448,6 +446,23 @@ export interface IChartModelBase {
 	setTrendlinePreviewEnd(point: { x: number; y: number; time: number; price: number } | null): void;
 	getTrendlinePreviewEnd(): { x: number; y: number; time: number; price: number } | null;
 
+	// New pane management methods
+	addPane(height?: number): number;
+	deletePaneById(paneIndex: number): void;
+	getPaneById(paneIndex: number): Pane | null;
+}
+
+// Interface for additional pane data
+export interface PaneData {
+	id: string;
+	title?: string;
+	series: Array<{
+		id: string;
+		type: SeriesType;
+		data: any[];
+		options?: any;
+	}>;
+	height?: number;
 }
 
 function isPanePrimitive(source: IPriceDataSource | IPrimitiveHitTestSource): source is IPrimitiveHitTestSource | Pane {
@@ -490,6 +505,10 @@ export class ChartModel<HorzScaleItem> implements IDestroyable, IChartModelBase 
 	private _isDrawingTrendline: boolean = false;
 	private _trendlineStartPoint: { x: number; y: number; time: number; price: number } | null = null;
 	private _trendlinePreviewEnd: { x: number; y: number; time: number; price: number } | null = null;
+
+	// New properties for pane management
+	private _paneDataMap: Map<number, PaneData> = new Map();
+	private _nextPaneId: number = 1; // Start from 1 since 0 is the main chart pane
 
 	private _getCurrentSymbolTrendlines(): Map<string, Trendline> {
     if (!this._currentSymbol) {
@@ -701,6 +720,73 @@ private _loadFibonacciFromStorage(): void {
     		this.fullUpdate(); // Trigger a redraw after loading
 		});
 		this._loadFibonacciFromStorage();
+	}
+
+	// New pane management methods
+	public addPane(height: number = 100): number {
+		const paneIndex = this._panes.length;
+		const pane = this._getOrCreatePane(paneIndex);
+		
+		if (height > 0) {
+			pane.setStretchFactor(height * DEFAULT_STRETCH_FACTOR / 100);
+		}
+
+		// Create pane data entry
+		const paneData: PaneData = {
+			id: `pane_${this._nextPaneId++}`,
+			title: `Pane ${paneIndex}`,
+			series: [],
+			height: height
+		};
+		this._paneDataMap.set(paneIndex, paneData);
+
+		this.fullUpdate();
+		return paneIndex;
+	}
+
+	public deletePaneById(paneIndex: number): void {
+		if (paneIndex === 0) {
+			console.warn('Cannot delete the main chart pane');
+			return;
+		}
+
+		if (paneIndex >= this._panes.length || paneIndex < 0) {
+			console.warn('Invalid pane index:', paneIndex);
+			return;
+		}
+
+		// Remove all series from this pane first
+		const pane = this._panes[paneIndex];
+		const seriesToRemove = pane.series().slice(); // Make a copy
+		seriesToRemove.forEach(series => {
+			this.removeSeries(series);
+		});
+
+		// Remove the pane data
+		this._paneDataMap.delete(paneIndex);
+
+		// Remove the pane itself
+		this.removePane(paneIndex);
+		
+		// Adjust the pane data map indices for panes that were shifted down
+		const updatedPaneDataMap = new Map<number, PaneData>();
+		this._paneDataMap.forEach((data, index) => {
+			if (index > paneIndex) {
+				updatedPaneDataMap.set(index - 1, data);
+			} else {
+				updatedPaneDataMap.set(index, data);
+			}
+		});
+		this._paneDataMap = updatedPaneDataMap;
+
+		this.fullUpdate();
+	}
+
+	public getPaneById(paneIndex: number): Pane | null {
+		if (paneIndex >= 0 && paneIndex < this._panes.length) {
+			return this._panes[paneIndex];
+		}
+		return null;
 	}
 
 	public addTrendline(data: TrendlineData, options?: any): string {
@@ -1478,5 +1564,4 @@ public getTrendlinePreviewEnd(): { x: number; y: number; time: number; price: nu
     return this._trendlinePreviewEnd;
 
 }
-
 }
