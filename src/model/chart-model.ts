@@ -827,8 +827,18 @@ public trendline(id: string): Trendline | undefined {
 }
 
 public addFibonacci(data: any, options?: any): string {
+    console.log('Model addFibonacci: received data:', data);
+    console.log('Model addFibonacci: data.id is:', data.id);
+    
     const fibonacciRetracement = new FibonacciRetracement(data, options);
-    this._getCurrentSymbolFibonacci().set(data.id, fibonacciRetracement);
+    console.log('Model addFibonacci: created FibonacciRetracement:', fibonacciRetracement);
+    console.log('Model addFibonacci: fibonacciRetracement.data():', fibonacciRetracement.data());
+    
+    const map = this._getCurrentSymbolFibonacci();
+    console.log('Model addFibonacci: storing with key:', data.id);
+    map.set(data.id, fibonacciRetracement);
+    console.log('Model addFibonacci: map after setting:', map);
+    
     this._saveFibonacciToStorage();
     this.fullUpdate();
     return data.id;

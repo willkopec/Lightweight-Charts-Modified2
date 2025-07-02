@@ -53,6 +53,10 @@ export interface IChartWidgetBase {
 	paneWidgets(): PaneWidget[];
 	options(): ChartOptionsInternalBase;
 	setCursorStyle(style: string | null): void;
+	isDrawingFibonacci(): boolean;
+	getFibonacciStartPoint(): { x: number; y: number; time: number; price: number } | null;
+	getFibonacciPreviewEnd(): { x: number; y: number; time: number; price: number } | null;
+	setFibonacciPreviewEnd(previewEnd: { x: number; y: number; time: number; price: number }): void;
 }
 
 export class ChartWidget<HorzScaleItem> implements IDestroyable, IChartWidgetBase {
@@ -87,6 +91,7 @@ export class ChartWidget<HorzScaleItem> implements IDestroyable, IChartWidgetBas
 
 	private _isDrawingFibonacci: boolean = false;
 	private _fibonacciStartPoint: { x: number; y: number; time: number; price: number } | null = null;
+	private _fibonacciPreviewEnd: { x: number; y: number; time: number; price: number } | null = null
 
 	private readonly _horzScaleBehavior: IHorzScaleBehavior<HorzScaleItem>;
 
@@ -356,6 +361,11 @@ export class ChartWidget<HorzScaleItem> implements IDestroyable, IChartWidgetBas
         console.log('Updating trendline preview at:', x, y);
         this._updateTrendlinePreview(x, y, pane);
     }
+
+	if (this._isDrawingFibonacci && this._fibonacciStartPoint) {
+    console.log('Updating fibonacci preview at:', x, y);
+    this._updateFibonacciPreview(x, y, pane);
+}
     
     // Normal crosshair position update
     this._model.setAndSaveCurrentPosition(x, y, event, pane, skipEvent);
@@ -401,6 +411,51 @@ private _updateTrendlinePreview(x: Coordinate, y: Coordinate, pane: Pane): void 
     };
     
     console.log('Updated trendline preview:', this._trendlinePreviewEnd);
+    
+    // Trigger a light update to redraw
+    this._model.lightUpdate();
+}
+
+private _updateFibonacciPreview(x: Coordinate, y: Coordinate, pane: Pane): void {
+    const priceScale = pane.defaultPriceScale();
+    const firstValue = priceScale.firstValue();
+    if (firstValue === null) {
+        return;
+    }
+    
+    const price = priceScale.coordinateToPrice(y, firstValue);
+    if (price === null) {
+        return;
+    }
+    
+    let timeValue: number;
+    
+    // Use the same time calculation logic as trendline creation
+    const timeScale = this._model.timeScale() as any;
+    const baseIndex = timeScale._internal_baseIndex();
+    const baseCoord = timeScale._internal_indexToCoordinate(baseIndex);
+    
+    if (baseCoord !== null && x > baseCoord) {
+        timeValue = this._extrapolateTimeFromCoordinate(x);
+    } else {
+        const index = timeScale.coordinateToIndex(x);
+        if (index !== null && index !== undefined) {
+            const timePoint = timeScale.indexToTimeScalePoint(index)?.originalTime;
+            timeValue = timePoint !== undefined ? (timePoint as number) : this._extrapolateTimeFromCoordinate(x);
+        } else {
+            timeValue = this._extrapolateTimeFromCoordinate(x);
+        }
+    }
+    
+    // Update the preview end point
+    this._fibonacciPreviewEnd = {
+        x: x,
+        y: y,
+        time: timeValue,
+        price: price
+    };
+    
+    console.log('Updated fibonacci preview:', this._fibonacciPreviewEnd);
     
     // Trigger a light update to redraw
     this._model.lightUpdate();
@@ -511,6 +566,7 @@ private _getLastMousePosition(): { x: Coordinate; y: Coordinate } | null {
 private _onFibonacciToolToggle(active: boolean): void {
     this._isDrawingFibonacci = active;
     this._fibonacciStartPoint = null;
+	this._fibonacciPreviewEnd = null;
     console.log('Fibonacci drawing mode:', active ? 'ON' : 'OFF');
     
     if (active) {
@@ -841,6 +897,7 @@ private _onFibonacciToolToggle(active: boolean): void {
 			});
 
 			const fibonacciRetracements = this._model.fibonacciRetracements();
+console.log('Updating fibonacci retracements in pane widgets, map size:', fibonacciRetracements.size);
 this._paneWidgets.forEach((pane: PaneWidget) => {
     pane.updateFibonacciRetracements(fibonacciRetracements);
 });
@@ -1192,8 +1249,24 @@ public isDrawingTrendline(): boolean {
     return this._isDrawingTrendline;
 }
 
+public isDrawingFibonacci(): boolean {
+    return this._isDrawingFibonacci;
+}
+
 public getTrendlineStartPoint(): { x: number; y: number; time: number; price: number } | null {
     return this._trendlineStartPoint;
+}
+
+public getFibonacciStartPoint(): { x: number; y: number; time: number; price: number } | null {
+    return this._fibonacciStartPoint;
+}
+
+public getFibonacciPreviewEnd(): { x: number; y: number; time: number; price: number } | null {
+    return this._fibonacciPreviewEnd;
+}
+
+public setFibonacciPreviewEnd(previewEnd: { x: number; y: number; time: number; price: number }): void {
+    this._fibonacciPreviewEnd = previewEnd;
 }
 
 private _handleFibonacciClick(
@@ -1273,8 +1346,9 @@ private _handleFibonacciClick(
         console.log('Creating Fibonacci retracement from', this._fibonacciStartPoint, 'to', endPoint);
         
         // Create the fibonacci retracement with only time/price data
+const fibId = 'fibonacci_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 const fibData = {
-    id: 'fibonacci_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+    id: fibId,
     point1: { 
         time: this._fibonacciStartPoint.time, 
         value: this._fibonacciStartPoint.price
@@ -1284,14 +1358,15 @@ const fibData = {
         value: endPoint.price
     }
 };
-console.log('Creating fibonacci with data:', fibData);
+console.log('Creating fibonacci with ID:', fibId, 'and data:', fibData);
 this._model.addFibonacci(fibData);
         
         // Reset drawing mode
         this._isDrawingFibonacci = false;
-        this._fibonacciStartPoint = null;
-        this.setCursorStyle(null);
-        this._toolbarWidget?.deactivateFibonacciTool();
+this._fibonacciStartPoint = null;
+this._fibonacciPreviewEnd = null;
+this.setCursorStyle(null);
+this._toolbarWidget?.deactivateFibonacciTool();
     }
 }
 
