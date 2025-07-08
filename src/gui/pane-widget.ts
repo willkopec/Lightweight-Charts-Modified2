@@ -371,10 +371,7 @@ private _hitTestFibonacci(x: number, y: number): { fibonacciId: string; hitType:
     let closestHit: { fibonacciId: string; hitType: 'topRight' | 'bottomLeft'; distance: number } | null = null;
     let closestDistance = Infinity;
 
-    console.log('Fibonacci retracements map:', this._fibonacciRetracements);
-console.log('Fibonacci retracements size:', this._fibonacciRetracements.size);
-this._fibonacciRetracements.forEach((fibonacci, id) => {
-    console.log('Checking fibonacci with ID:', id, 'fibonacci data:', fibonacci);
+    this._fibonacciRetracements.forEach((fibonacci, id) => {
         const data = fibonacci.data() as any;
         
         // Access the internal properties correctly
@@ -385,35 +382,35 @@ this._fibonacciRetracements.forEach((fibonacci, id) => {
         
         // Convert both points to coordinates
         const coords1 = this._timeAndPriceToCoordinates(point1Time, point1Value, timeScale, priceScale, firstValue);
-const coords2 = this._timeAndPriceToCoordinates(point2Time, point2Value, timeScale, priceScale, firstValue);
+        const coords2 = this._timeAndPriceToCoordinates(point2Time, point2Value, timeScale, priceScale, firstValue);
         
         if (coords1 === null || coords2 === null) {
             return;
         }
         
-        // Determine which corner is top-right and which is bottom-left
-        const leftX = Math.min(coords1.x, coords2.x);
-        const rightX = Math.max(coords1.x, coords2.x);
-        const topY = Math.min(coords1.y, coords2.y);
-        const bottomY = Math.max(coords1.y, coords2.y);
+        // Use a larger hit tolerance
+        const tolerance = 15; // Increased from 8 to 15
         
-        // Test hit on top-right corner
-        const topRightDist = Math.sqrt(Math.pow(x - rightX, 2) + Math.pow(y - topY, 2));
-        if (topRightDist <= SELECTION_HIT_TOLERANCE && topRightDist < closestDistance) {
-    console.log('Top right hit detected for fibonacci ID:', id);
-    closestHit = { fibonacciId: id, hitType: 'topRight', distance: topRightDist };
-    closestDistance = topRightDist;
-}
+        // Test hit on first point
+        const point1Dist = Math.sqrt(Math.pow(x - coords1.x, 2) + Math.pow(y - coords1.y, 2));
+        if (point1Dist <= tolerance && point1Dist < closestDistance) {
+            console.log('Hit detected on point1 for fibonacci ID:', id);
+            closestHit = { fibonacciId: id, hitType: 'bottomLeft', distance: point1Dist };
+            closestDistance = point1Dist;
+        }
         
-        // Test hit on bottom-left corner
-        const bottomLeftDist = Math.sqrt(Math.pow(x - leftX, 2) + Math.pow(y - bottomY, 2));
-if (bottomLeftDist <= SELECTION_HIT_TOLERANCE && bottomLeftDist < closestDistance) {
-    console.log('Bottom left hit detected for fibonacci ID:', id);
-    closestHit = { fibonacciId: id, hitType: 'bottomLeft', distance: bottomLeftDist };
-    closestDistance = bottomLeftDist;
-}
+        // Test hit on second point
+        const point2Dist = Math.sqrt(Math.pow(x - coords2.x, 2) + Math.pow(y - coords2.y, 2));
+        if (point2Dist <= tolerance && point2Dist < closestDistance) {
+            console.log('Hit detected on point2 for fibonacci ID:', id);
+            closestHit = { fibonacciId: id, hitType: 'topRight', distance: point2Dist };
+            closestDistance = point2Dist;
+        }
     });
 
+    if (closestHit) {
+        console.log('Returning fibonacci hit:', closestHit);
+    }
     return closestHit;
 }
 
@@ -488,10 +485,8 @@ private _distanceToLine(px: number, py: number, x1: number, y1: number, x2: numb
 }
 
 private _handleFibonacciMouseDown(hit: { fibonacciId: string; hitType: 'topRight' | 'bottomLeft'; distance: number }, event: MouseEventHandlerMouseEvent): void {
-    // Select the fibonacci
     console.log('Selecting fibonacci with ID:', hit.fibonacciId);
-this.selectFibonacci(hit.fibonacciId);
-console.log('After selection, selectedId is:', this._fibonacciSelection.selectedFibonacciId)
+    this.selectFibonacci(hit.fibonacciId);
     
     const fibonacci = this._fibonacciRetracements.get(hit.fibonacciId);
     if (fibonacci) {
@@ -516,10 +511,12 @@ console.log('After selection, selectedId is:', this._fibonacciSelection.selected
         
         // Change cursor
         this._topCanvasBinding.canvasElement.style.cursor = 'grabbing';
+        
+        // IMPORTANT: Prevent the event from bubbling up to chart drag handlers
+        if (event.preventDefault) {
+            event.preventDefault();
+        }
     }
-    
-    // Prevent normal mouse down behavior
-    event.preventDefault?.();
 }
 
 // Handle trendline mouse down
@@ -601,49 +598,37 @@ private _handleFibonacciDrag(event: MouseEventHandlerMouseEvent): void {
         return;
     }
     
-    const currentX = event.localX;
     let currentTime: number;
     
-    // Calculate current time using same logic as trendlines
-    const index = timeScale._internal_coordinateToIndex(currentX);
+    // Calculate current time
+    const index = timeScale._internal_coordinateToIndex(event.localX);
     if (index !== null) {
         const timePoint = timeScale._internal_indexToTimeScalePoint(index);
         if (timePoint?.originalTime !== undefined) {
             currentTime = timePoint.originalTime as number;
         } else {
-            currentTime = this._extrapolateTimeFromCoordinate(currentX, timeScale);
+            currentTime = this._extrapolateTimeFromCoordinate(event.localX, timeScale);
         }
     } else {
-        currentTime = this._extrapolateTimeFromCoordinate(currentX, timeScale);
+        currentTime = this._extrapolateTimeFromCoordinate(event.localX, timeScale);
     }
     
-    console.log('Dragging fibonacci corner to new position:', { x: currentX, time: currentTime, price: currentPrice });
+    console.log('Dragging fibonacci corner to:', { time: currentTime, price: currentPrice, corner: dragState.dragCorner });
     
     try {
         const data = fibonacci.data() as any;
         
         if (dragState.dragCorner === 'topRight') {
-            // Update point2 (assuming it's the top-right)
-            if (data._internal_point2) {
-                data._internal_point2._internal_time = currentTime;
-                data._internal_point2._internal_value = currentPrice;
-            }
-            if (data.point2) {
-                data.point2.time = currentTime;
-                data.point2.value = currentPrice;
-            }
+            // Update point2
+            data._internal_point2._internal_time = currentTime;
+            data._internal_point2._internal_value = currentPrice;
         } else {
-            // Update point1 (bottom-left)
-            if (data._internal_point1) {
-                data._internal_point1._internal_time = currentTime;
-                data._internal_point1._internal_value = currentPrice;
-            }
-            if (data.point1) {
-                data.point1.time = currentTime;
-                data.point1.value = currentPrice;
-            }
+            // Update point1 (bottomLeft)
+            data._internal_point1._internal_time = currentTime;
+            data._internal_point1._internal_value = currentPrice;
         }
         
+        // Force a redraw
         this._model().lightUpdate();
         
     } catch (error) {
@@ -835,9 +820,9 @@ private _updateCursorForTrendlineHover(x: number, y: number): void {
 
 // Draw fibonacci selection indicators
 private _drawFibonacciSelectionIndicators(target: CanvasRenderingTarget2D): void {
-    console.log('Drawing fibonacci selection indicators, selectedId:', this._fibonacciSelection.selectedFibonacciId);
+    //console.log('Drawing fibonacci selection indicators, selectedId:', this._fibonacciSelection.selectedFibonacciId);
 if (!this._fibonacciSelection.selectedFibonacciId || this._state === null) {
-    console.log('No selected fibonacci or no state, returning');
+    //console.log('No selected fibonacci or no state, returning');
     return;
 }
 
@@ -990,12 +975,12 @@ private _drawTrendlineSelectionIndicators(target: CanvasRenderingTarget2D): void
 }
 
 public updateFibonacciRetracements(fibonacciRetracements: Map<string, FibonacciRetracement>): void {
-    console.log('PaneWidget: updateFibonacciRetracements called with map size:', fibonacciRetracements.size);
-    console.log('PaneWidget: Received fibonacci map:', fibonacciRetracements);
+    //console.log('PaneWidget: updateFibonacciRetracements called with map size:', fibonacciRetracements.size);
+    //console.log('PaneWidget: Received fibonacci map:', fibonacciRetracements);
     // Store fibonacci retracements for rendering
     this._fibonacciRetracements = fibonacciRetracements;
-    console.log('PaneWidget: After update, local map size:', this._fibonacciRetracements.size);
-    console.log('PaneWidget: Local fibonacci map:', this._fibonacciRetracements);
+    //console.log('PaneWidget: After update, local map size:', this._fibonacciRetracements.size);
+    //console.log('PaneWidget: Local fibonacci map:', this._fibonacciRetracements);
 }
 
 	public stretchFactor(): number {
@@ -1021,27 +1006,27 @@ public mouseEnterEvent(event: MouseEventHandlerMouseEvent): void {
 	public mouseDownEvent(event: MouseEventHandlerMouseEvent): void {
     this._onMouseEvent();
     
-    // Check for trendline interaction first
-    const trendlineHit = this._hitTestTrendlines(event.localX, event.localY);
-if (trendlineHit) {
-    this._handleTrendlineMouseDown(trendlineHit, event);
-    return;
-}
-
-// Check for fibonacci interaction
-console.log('Testing fibonacci hit at:', event.localX, event.localY);
-const fibonacciHit = this._hitTestFibonacci(event.localX, event.localY);
-console.log('Fibonacci hit result:', fibonacciHit);
-if (fibonacciHit) {
-    console.log('Fibonacci hit detected, handling mouse down');
-    this._handleFibonacciMouseDown(fibonacciHit, event);
-    return;
-}
-
-// Clear selections if clicking elsewhere
-this.clearTrendlineSelection();
-this.clearFibonacciSelection();
+    // Check for fibonacci interaction FIRST (before trendline)
+    const fibonacciHit = this._hitTestFibonacci(event.localX, event.localY);
+    if (fibonacciHit) {
+        console.log('Fibonacci hit detected, handling mouse down');
+        this._handleFibonacciMouseDown(fibonacciHit, event);
+        // STOP here - don't process any other mouse events
+        return;
+    }
     
+    // Check for trendline interaction
+    const trendlineHit = this._hitTestTrendlines(event.localX, event.localY);
+    if (trendlineHit) {
+        this._handleTrendlineMouseDown(trendlineHit, event);
+        return;
+    }
+
+    // Clear selections if clicking elsewhere
+    this.clearTrendlineSelection();
+    this.clearFibonacciSelection();
+    
+    // Only do normal mouse down behavior if we didn't hit any special objects
     this._mouseTouchDownEvent();
     this._setCrosshairPosition(event.localX, event.localY, event);
 }
@@ -1053,50 +1038,46 @@ this.clearFibonacciSelection();
     
     // Handle trendline dragging
     if (this._trendlineSelection.dragState?.isDragging) {
-    this._handleTrendlineDrag(event);
-    return;
-}
+        this._handleTrendlineDrag(event);
+        return;
+    }
 
-// Handle fibonacci dragging
-if (this._fibonacciSelection.dragState?.isDragging) {
-    this._handleFibonacciDrag(event);
-    return;
-}
+    // Handle fibonacci dragging
+    if (this._fibonacciSelection.dragState?.isDragging) {
+        this._handleFibonacciDrag(event);
+        return;
+    }
     
     this._onMouseEvent();
     const x = event.localX;
     const y = event.localY;
     
-    // Get trendline state from model
+    // Get drawing states
     const model = this._model();
-const isTrendlineDrawing = model.isDrawingTrendline();
-const isFibonacciDrawing = this._chart.isDrawingFibonacci();
-const trendlineStartPoint = model.getTrendlineStartPoint();
-const fibonacciStartPoint = this._chart.getFibonacciStartPoint();
+    const isTrendlineDrawing = model.isDrawingTrendline();
+    const isFibonacciDrawing = this._chart.isDrawingFibonacci();
+    const trendlineStartPoint = model.getTrendlineStartPoint();
+    const fibonacciStartPoint = this._chart.getFibonacciStartPoint();
 
-if (isTrendlineDrawing) {
-    // If we have a start point, update the preview line
-    if (trendlineStartPoint) {
-        this._updateTrendlinePreview(x, y);
+    if (isTrendlineDrawing) {
+        if (trendlineStartPoint) {
+            this._updateTrendlinePreview(x, y);
+        }
+        this._setCrosshairPosition(x, y, event);
+        return;
     }
-    // ALWAYS update crosshair position for the dot in drawing mode
-    this._setCrosshairPosition(x, y, event);
-    return;
-}
 
-if (isFibonacciDrawing) {
-    // If we have a start point, update the fibonacci preview
-    if (fibonacciStartPoint) {
-        this._updateFibonacciPreview(x, y);
+    if (isFibonacciDrawing) {
+        if (fibonacciStartPoint) {
+            this._updateFibonacciPreview(x, y);
+        }
+        this._setCrosshairPosition(x, y, event);
+        return;
     }
-    // ALWAYS update crosshair position for the dot in drawing mode
-    this._setCrosshairPosition(x, y, event);
-    return;
-}
     
-    // Change cursor based on hover state
+    // Change cursor based on hover state (only when not drawing)
     this._updateCursorForTrendlineHover(x, y);
-this._updateCursorForFibonacciHover(x, y);
+    this._updateCursorForFibonacciHover(x, y);
     
     this._setCrosshairPosition(x, y, event);
 }
@@ -1332,12 +1313,19 @@ private _updateTrendlinePreview(currentX: number, currentY: number): void {
 	public pressedMouseMoveEvent(event: MouseEventHandlerMouseEvent): void {
     this._onMouseEvent();
     
+    // Handle fibonacci dragging FIRST
+    if (this._fibonacciSelection.dragState?.isDragging) {
+        this._handleFibonacciDrag(event);
+        return; // Don't do anything else
+    }
+    
     // Handle trendline dragging
     if (this._trendlineSelection.dragState?.isDragging) {
         this._handleTrendlineDrag(event);
         return;
     }
     
+    // Only do normal pressed mouse move if not dragging anything
     this._pressedMouseTouchMoveEvent(event);
     this._setCrosshairPosition(event.localX, event.localY, event);
 }
@@ -1348,14 +1336,23 @@ private _updateTrendlinePreview(currentX: number, currentY: number): void {
     }
     this._onMouseEvent();
 
-    // Handle end of trendline dragging
+    // Handle end of trendline dragging - THIS WAS MISSING
+    if (this._trendlineSelection.dragState?.isDragging) {
+        this._trendlineSelection.dragState.isDragging = false;
+        this._topCanvasBinding.canvasElement.style.cursor = 'default';
+        // Keep the selection but stop dragging
+        this._trendlineSelection.dragState = null;
+        return;
+    }
+
+    // Handle end of fibonacci dragging
     if (this._fibonacciSelection.dragState?.isDragging) {
-    this._fibonacciSelection.dragState.isDragging = false;
-    this._topCanvasBinding.canvasElement.style.cursor = 'default';
-    // Keep the selection but stop dragging
-    this._fibonacciSelection.dragState = null;
-    return;
-}
+        this._fibonacciSelection.dragState.isDragging = false;
+        this._topCanvasBinding.canvasElement.style.cursor = 'default';
+        // Keep the selection but stop dragging
+        this._fibonacciSelection.dragState = null;
+        return;
+    }
 
     this._longTap = false;
     this._endScroll(event);
@@ -1591,17 +1588,13 @@ this._drawFibonacciSelectionIndicators(topTarget);
     if (!isDrawing || !startPoint || !previewEnd) {
         return;
     }
-    
-    console.log('Drawing fibonacci preview from:', startPoint, 'to:', previewEnd);
 
     target.useBitmapCoordinateSpace((scope) => {
         const ctx = scope.context;
         
         try {
-            // Calculate fibonacci levels
-            const priceRange = Math.abs(previewEnd.price - startPoint.price);
-            const isUptrend = previewEnd.price > startPoint.price;
-            const baseLevelPrice = isUptrend ? previewEnd.price : startPoint.price;
+            // FIXED: Calculate fibonacci levels respecting draw direction
+            const priceRange = previewEnd.price - startPoint.price; // Keep the sign!
             const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0];
             
             // Get X range for drawing
@@ -1618,8 +1611,8 @@ this._drawFibonacciSelectionIndicators(topTarget);
             
             // Draw each fibonacci level
             levels.forEach((level) => {
-                const retracement = priceRange * level;
-                const levelPrice = isUptrend ? baseLevelPrice - retracement : baseLevelPrice + retracement;
+                // FIXED: Use startPoint as base and add the retracement in the correct direction
+                const levelPrice = startPoint.price + (priceRange * level);
                 
                 // Convert price to screen coordinate
                 const priceScale = this._state?.defaultPriceScale();
@@ -1639,7 +1632,7 @@ this._drawFibonacciSelectionIndicators(topTarget);
                         // Draw level label
                         const percentage = `${(level * 100).toFixed(1)}%`;
                         const labelText = `${percentage} (${levelPrice.toFixed(4)})`;
-ctx.fillText(labelText, endX + 5 * scope.horizontalPixelRatio, y + 4 * scope.verticalPixelRatio);
+                        ctx.fillText(labelText, endX + 5 * scope.horizontalPixelRatio, y + 4 * scope.verticalPixelRatio);
                     }
                 }
             });
@@ -2144,9 +2137,6 @@ private _drawFibonacciRetracements(target: CanvasRenderingTarget2D): void {
                 const point2Time = (data as any)._internal_point2._internal_time;
                 const point2Value = (data as any)._internal_point2._internal_value;
                 
-                console.log('Using times:', point1Time, point2Time);
-                console.log('Using values:', point1Value, point2Value);
-                
                 // Use the same coordinate conversion as trendlines
                 const coords1 = this._timeAndPriceToCoordinates(point1Time, point1Value, timeScale, priceScale, firstValue);
                 const coords2 = this._timeAndPriceToCoordinates(point2Time, point2Value, timeScale, priceScale, firstValue);
@@ -2160,10 +2150,8 @@ private _drawFibonacciRetracements(target: CanvasRenderingTarget2D): void {
                 const startX = Math.min(coords1.x, coords2.x);
                 const endX = Math.max(coords1.x, coords2.x);
                 
-                // Calculate fibonacci levels manually since the model might not have access to internal data
-                const priceRange = Math.abs(point2Value - point1Value);
-                const isUptrend = point2Value > point1Value;
-                const baseLevelPrice = isUptrend ? point2Value : point1Value;
+                // FIXED: Calculate fibonacci levels respecting draw direction
+                const priceRange = point2Value - point1Value; // Keep the sign!
                 const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0];
                 
                 ctx.save();
@@ -2173,8 +2161,8 @@ private _drawFibonacciRetracements(target: CanvasRenderingTarget2D): void {
                 
                 // Draw each fibonacci level as a horizontal line
                 levels.forEach((level) => {
-                    const retracement = priceRange * level;
-                    const levelPrice = isUptrend ? baseLevelPrice - retracement : baseLevelPrice + retracement;
+                    // FIXED: Use point1 as base and add the retracement in the correct direction
+                    const levelPrice = point1Value + (priceRange * level);
                     const priceY = priceScale._internal_priceToCoordinate(levelPrice, firstValue);
                     
                     if (priceY !== null) {
@@ -2186,23 +2174,20 @@ private _drawFibonacciRetracements(target: CanvasRenderingTarget2D): void {
                         
                         // Draw label if enabled
                         if (options.showLabels) {
-    ctx.fillStyle = options.color;
-    ctx.font = '12px Arial';
-    ctx.textAlign = 'left';
-    const percentage = `${(level * 100).toFixed(1)}%`;
-    const labelText = `${percentage} (${levelPrice.toFixed(4)})`;
-    ctx.fillText(labelText, endX + 5, priceY + 4);
-}
+                            ctx.fillStyle = options.color;
+                            ctx.font = '12px Arial';
+                            ctx.textAlign = 'left';
+                            const percentage = `${(level * 100).toFixed(1)}%`;
+                            const labelText = `${percentage} (${levelPrice.toFixed(4)})`;
+                            ctx.fillText(labelText, endX + 5, priceY + 4);
+                        }
                     }
                 });
                 
                 ctx.restore();
                 
-                console.log('Drew fibonacci retracement with', levels.length, 'levels from', startX, 'to', endX);
-                
             } catch (error) {
                 console.error('Error drawing fibonacci retracement:', error);
-                //console.error('Error details:', error.stack);
             }
         });
     });
@@ -2235,7 +2220,7 @@ private _timeAndPriceToCoordinates(
         const y = priceScale._internal_priceToCoordinate(targetPrice, firstValue);
         
         if (x !== null && y !== null) {
-            console.log('Using normal coordinate conversion for time:', targetTime);
+            //console.log('Using normal coordinate conversion for time:', targetTime);
             return { x, y };
         }
     }

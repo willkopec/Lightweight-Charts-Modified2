@@ -828,16 +828,12 @@ public trendline(id: string): Trendline | undefined {
 
 public addFibonacci(data: any, options?: any): string {
     console.log('Model addFibonacci: received data:', data);
-    console.log('Model addFibonacci: data.id is:', data.id);
     
     const fibonacciRetracement = new FibonacciRetracement(data, options);
-    console.log('Model addFibonacci: created FibonacciRetracement:', fibonacciRetracement);
-    console.log('Model addFibonacci: fibonacciRetracement.data():', fibonacciRetracement.data());
     
     const map = this._getCurrentSymbolFibonacci();
     console.log('Model addFibonacci: storing with key:', data.id);
-    map.set(data.id, fibonacciRetracement);
-    console.log('Model addFibonacci: map after setting:', map);
+    map.set(data.id, fibonacciRetracement); // This should ADD, not replace the entire map
     
     this._saveFibonacciToStorage();
     this.fullUpdate();
@@ -853,12 +849,33 @@ public removeFibonacci(id: string): void {
 public updateFibonacci(id: string, point1?: any, point2?: any, options?: any): void {
     const fibonacci = this._getCurrentSymbolFibonacci().get(id);
     if (fibonacci) {
-        if (point1 || point2) {
-            fibonacci.updatePoints(point1, point2);
+        const data = fibonacci.data() as any;
+        
+        // Update point1 if provided
+        if (point1) {
+            data._internal_point1._internal_time = point1.time;
+            data._internal_point1._internal_value = point1.value;
+            if (data.point1) {
+                data.point1.time = point1.time;
+                data.point1.value = point1.value;
+            }
         }
+        
+        // Update point2 if provided
+        if (point2) {
+            data._internal_point2._internal_time = point2.time;
+            data._internal_point2._internal_value = point2.value;
+            if (data.point2) {
+                data.point2.time = point2.time;
+                data.point2.value = point2.value;
+            }
+        }
+        
+        // Update options if provided
         if (options) {
             fibonacci.applyOptions(options);
         }
+        
         this._saveFibonacciToStorage();
         this.fullUpdate();
     }

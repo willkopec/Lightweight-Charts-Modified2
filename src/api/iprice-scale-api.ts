@@ -2,9 +2,24 @@ import { DeepPartial } from '../helpers/strict-type-checks';
 
 import { PriceScaleOptions } from '../model/price-scale';
 import { IRange } from '../model/time-data';
+import { Coordinate } from '../model/coordinate';
 
 /** Interface to control chart's price scale */
 export interface IPriceScaleApi {
+
+	/**
+ * Converts a coordinate (pixel position) to a price value
+ * @param coordinate - The pixel coordinate on the price scale
+ * @returns The price value at that coordinate
+ */
+coordinateToPrice(coordinate: Coordinate): number;
+
+/**
+ * Converts a price value to a coordinate (pixel position)
+ * @param price - The price value
+ * @returns The pixel coordinate on the price scale
+ */
+priceToCoordinate(price: number): Coordinate;
 	/**
 	 * Applies new options to the price scale
 	 *

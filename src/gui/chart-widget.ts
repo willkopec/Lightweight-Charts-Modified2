@@ -897,7 +897,7 @@ private _onFibonacciToolToggle(active: boolean): void {
 			});
 
 			const fibonacciRetracements = this._model.fibonacciRetracements();
-console.log('Updating fibonacci retracements in pane widgets, map size:', fibonacciRetracements.size);
+//console.log('Updating fibonacci retracements in pane widgets, map size:', fibonacciRetracements.size);
 this._paneWidgets.forEach((pane: PaneWidget) => {
     pane.updateFibonacciRetracements(fibonacciRetracements);
 });
@@ -1223,14 +1223,41 @@ private _handleTrendlineClick(
             }
         });
         
-        // Reset drawing mode
+        // COMPLETE CLEANUP - This is the key fix
         this._isDrawingTrendline = false;
         this._trendlineStartPoint = null;
         this._trendlinePreviewEnd = null;
+        
+        // Clear the model's drawing state
         this._model.setTrendlineDrawingState(false);
+        this._model.setTrendlineStartPoint(null);
+        this._model.setTrendlinePreviewEnd(null);
+        
+        // Reset cursor
         this.setCursorStyle(null);
-        this._model.crosshairSource().setDrawingMode(false);
-        this._toolbarWidget?.deactivateTrendlineTool();
+        
+        // Reset crosshair drawing mode
+        const crosshair = this._model.crosshairSource();
+        crosshair._showCenterDot = false;
+        
+        // Restore original crosshair mode
+        if (this._originalCrosshairMode !== null) {
+            this._model.applyOptions({
+                crosshair: {
+                    mode: this._originalCrosshairMode
+                }
+            });
+            this._originalCrosshairMode = null;
+        }
+        
+        // THIS IS THE KEY FIX: Deactivate the toolbar tool
+        if (this._toolbarWidget) {
+            this._toolbarWidget.deactivateTrendlineTool();
+        }
+        
+        // Force crosshair update
+        crosshair.updateAllViews();
+        this._model.fullUpdate();
     }
 }
 

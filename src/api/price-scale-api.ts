@@ -9,6 +9,7 @@ import { PriceScale, PriceScaleOptions } from '../model/price-scale';
 import { IRange } from '../model/time-data';
 
 import { IPriceScaleApi } from './iprice-scale-api';
+import { Coordinate } from '../model/coordinate';
 
 export class PriceScaleApi implements IPriceScaleApi {
 	private _chartWidget: IChartWidgetBase;
@@ -20,6 +21,34 @@ export class PriceScaleApi implements IPriceScaleApi {
 		this._priceScaleId = priceScaleId;
 		this._paneIndex = paneIndex ?? 0;
 	}
+
+	/**
+ * Converts a coordinate (pixel position) to a price value
+ * @param coordinate - The pixel coordinate on the price scale
+ * @returns The price value at that coordinate
+ */
+public coordinateToPrice(coordinate: Coordinate): number {
+	const priceScale = this._priceScale();
+	const firstValue = priceScale.firstValue();
+	if (firstValue === null) {
+		return NaN;
+	}
+	return priceScale.coordinateToPrice(coordinate, firstValue);
+}
+
+/**
+ * Converts a price value to a coordinate (pixel position)
+ * @param price - The price value
+ * @returns The pixel coordinate on the price scale
+ */
+public priceToCoordinate(price: number): Coordinate {
+	const priceScale = this._priceScale();
+	const firstValue = priceScale.firstValue();
+	if (firstValue === null) {
+		return NaN as Coordinate;
+	}
+	return priceScale.priceToCoordinate(price, firstValue);
+}
 
 	public applyOptions(options: DeepPartial<PriceScaleOptions>): void {
 		this._chartWidget.model().applyPriceScaleOptions(this._priceScaleId, options, this._paneIndex);
